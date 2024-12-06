@@ -1,8 +1,13 @@
+require("dotenv").config();
 const express = require("express");
-require("dotenv").config(); // Configure the dotenv and parse the .env
+const database = require("./database");
+const { hashPassword } = require("./utility");
 
-// basic server configuration
-const app = express(); 
+// Import the User schema or constructor
+const { User } = require("./schemas/user");
+
+// Basic server configuration
+const app = express();
 const PORT = process.env.PORT || -1;
 const HOST = process.env.HOST || -1;
 
@@ -13,12 +18,43 @@ if (PORT === -1 || HOST === "") {
 
 app.use(express.static("src/public"));
 
-app.listen(PORT, HOST, () => {
-    if (PORT === 80) {
-        console.log(`SUCCESS! The server is successfully began to run. Visit: http://${HOST}\n`);
-    } else if (PORT === 443) {
-        console.log(`SUCCESS! The server is successfully began to run. Visit: https://${HOST}\n`);
-    } else {
-        console.log(`SUCCESS! The server is successfully began to run. Visit: http://${HOST}:${PORT} or if that didn't work: https://${HOST}:${PORT}\n`);
+(async () => {
+    try {
+        // Ensure the database connection is established
+        console.log("INFO: Connecting to the database...");
+        const db = await database.connectToDatabase();
+        console.log("SUCCESS: Connected to the database.");
+
+        // Check if the admin account exists
+        console.log("Checking if an admin account exists.");
+        const adminExists = await database.doesUserExist({ username: "admin" });
+
+        if (!adminExists) {
+            console.log("An admin account doesn't exist. Creating one.");
+            const adminPassword = await hashPassword("123456789"); // Hash the admin password securely
+            const adminUser = {
+                username: "admin",
+                nick: "Foxed-In Admin",
+                password: adminPassword,
+                createdAt: new Date(),
+                permissions: ["administrator"],
+                badges: ["administrator", "developer", "owner"],
+            };
+
+            await database.createUser(adminUser);
+            console.log("SUCCESS: Admin account created.");
+        } else {
+            console.log("Admin account already exists.");
+        }
+
+        // Start the server after the database is ready
+        app.listen(PORT, HOST, () => {
+            const protocol = PORT === 443 ? "https" : "http";
+            const portPart = PORT === 80 || PORT === 443 ? "" : `:${PORT}`;
+            console.log(`SUCCESS! The server is running. Visit: ${protocol}://${HOST}${portPart}`);
+        });
+    } catch (error) {
+        console.error("ERROR: Unable to start the server due to an issue with the database:", error);
+        process.exit(1); // Exit the application if the database connection fails
     }
-});
+})();
